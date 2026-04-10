@@ -369,6 +369,18 @@ where
         &self.pool
     }
 
+    /// Sets an additional balance provider for the pool.
+    ///
+    /// The provider returns extra balance (beyond native) for a given address,
+    /// used during pool maintenance to compute effective balance for subpool
+    /// placement (e.g., SGT balance on OP Stack).
+    pub fn set_additional_balance_provider(
+        &self,
+        f: std::sync::Arc<dyn Fn(alloy_primitives::Address) -> alloy_primitives::U256 + Send + Sync>,
+    ) {
+        self.inner().set_additional_balance_provider(f);
+    }
+
     /// Get the config the pool was configured with.
     pub fn config(&self) -> &PoolConfig {
         self.inner().config()

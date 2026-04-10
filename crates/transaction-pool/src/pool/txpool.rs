@@ -30,9 +30,7 @@ use alloy_eips::{
     eip4844::BLOB_TX_MIN_BLOB_GASPRICE,
     Typed2718,
 };
-#[cfg(test)]
-use alloy_primitives::Address;
-use alloy_primitives::{map::AddressSet, TxHash, B256};
+use alloy_primitives::{map::AddressSet, Address, TxHash, B256};
 use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 use std::{
@@ -135,6 +133,14 @@ impl<T: TransactionOrdering> TxPool<T> {
             config,
             metrics: Default::default(),
         }
+    }
+
+    /// Sets an additional balance provider for effective balance computation.
+    pub(crate) fn set_additional_balance_provider(
+        &mut self,
+        f: Arc<dyn Fn(Address) -> U256 + Send + Sync>,
+    ) {
+        self.all_transactions.additional_balance_provider = Some(f);
     }
 
     /// Retrieves the highest nonce for a specific sender from the transaction pool.
@@ -1372,11 +1378,15 @@ pub(crate) struct AllTransactions<T: PoolTransaction> {
     local_transactions_config: LocalTransactionConfig,
     /// All accounts with a pooled authorization
     auths: FxHashMap<SenderId, HashSet<TxHash>>,
+    /// Optional provider for additional balance beyond native (e.g., SGT).
+    /// Given an address, returns the additional balance to add to the native balance.
+    additional_balance_provider: Option<Arc<dyn Fn(Address) -> U256 + Send + Sync>>,
     /// All Transactions metrics
     metrics: AllTransactionsMetrics,
 }
 
 impl<T: PoolTransaction> AllTransactions<T> {
+
     /// Create a new instance
     fn new(config: &PoolConfig) -> Self {
         Self {
@@ -1486,6 +1496,15 @@ impl<T: PoolTransaction> AllTransactions<T> {
         // pre-allocate a few updates
         let mut updates = Vec::with_capacity(64);
 
+        // Clone the additional balance provider before mutably borrowing txs
+        let additional_balance = self.additional_balance_provider.clone();
+        let effective_bal = |native: &U256, addr: Address| -> U256 {
+            match &additional_balance {
+                Some(f) => native.saturating_add(f(addr)),
+                None => *native,
+            }
+        };
+
         let mut iter = self.txs.iter_mut().peekable();
 
         // Loop over all individual senders and update all affected transactions.
@@ -1528,7 +1547,8 @@ impl<T: PoolTransaction> AllTransactions<T> {
                     tx.state.insert(TxState::NO_NONCE_GAPS);
                     tx.state.insert(TxState::NO_PARKED_ANCESTORS);
                     tx.cumulative_cost = U256::ZERO;
-                    if tx.transaction.cost() > &info.balance {
+                    let effective = effective_bal(&info.balance, tx.transaction.sender());
+                    if tx.transaction.cost() > &effective {
                         // sender lacks sufficient funds to pay for this transaction
                         tx.state.remove(TxState::ENOUGH_BALANCE);
                     } else {
@@ -1589,7 +1609,8 @@ impl<T: PoolTransaction> AllTransactions<T> {
 
                 // If the account changed in the block, check the balance.
                 if let Some(changed_balance) = changed_balance {
-                    if &cumulative_cost > changed_balance {
+                    let effective = effective_bal(changed_balance, tx.transaction.sender());
+                    if cumulative_cost > effective {
                         // sender lacks sufficient funds to pay for this transaction
                         tx.state.remove(TxState::ENOUGH_BALANCE);
                     } else {
@@ -1956,6 +1977,14 @@ impl<T: PoolTransaction> AllTransactions<T> {
         let mut cumulative_cost = U256::ZERO;
         let mut updates = Vec::new();
 
+        let additional_balance = self.additional_balance_provider.clone();
+        let effective_bal = |native: &U256, addr: Address| -> U256 {
+            match &additional_balance {
+                Some(f) => native.saturating_add(f(addr)),
+                None => *native,
+            }
+        };
+
         // Current tx does not exceed block gas limit after ensure_valid check
         state.insert(TxState::NOT_TOO_MUCH_GAS);
 
@@ -2080,7 +2109,8 @@ impl<T: PoolTransaction> AllTransactions<T> {
                 // Update for next transaction
                 cumulative_cost = tx.next_cumulative_cost();
 
-                if cumulative_cost > on_chain_balance {
+                let effective = effective_bal(&on_chain_balance, tx.transaction.sender());
+                if cumulative_cost > effective {
                     // sender lacks sufficient funds to pay for this transaction
                     tx.state.remove(TxState::ENOUGH_BALANCE);
                 } else {
@@ -2171,6 +2201,7 @@ impl<T: PoolTransaction> Default for AllTransactions<T> {
             price_bumps: Default::default(),
             local_transactions_config: Default::default(),
             auths: Default::default(),
+            additional_balance_provider: None,
             metrics: Default::default(),
         }
     }

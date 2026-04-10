@@ -544,6 +544,18 @@ where
         self.notify_on_transaction_updates(promoted, discarded);
     }
 
+    /// Sets an additional balance provider for the pool.
+    ///
+    /// The provider returns extra balance (beyond native) for a given address.
+    /// This is used during pool maintenance to compute effective balance for
+    /// subpool placement (e.g., SGT balance on OP Stack).
+    pub fn set_additional_balance_provider(
+        &self,
+        f: std::sync::Arc<dyn Fn(Address) -> alloy_primitives::U256 + Send + Sync>,
+    ) {
+        self.pool.write().set_additional_balance_provider(f);
+    }
+
     /// Add a single validated transaction into the pool.
     ///
     /// Returns the outcome and optionally metadata to be processed after the pool lock is
