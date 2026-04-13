@@ -551,7 +551,7 @@ where
     /// subpool placement (e.g., SGT balance on OP Stack).
     pub fn set_additional_balance_provider(
         &self,
-        f: std::sync::Arc<dyn Fn(Address) -> alloy_primitives::U256 + Send + Sync>,
+        f: std::sync::Arc<dyn Fn(Address) -> Result<alloy_primitives::U256, Box<dyn core::error::Error + Send + Sync>> + Send + Sync>,
     ) {
         self.pool.write().set_additional_balance_provider(f);
     }

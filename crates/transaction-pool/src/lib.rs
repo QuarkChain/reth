@@ -376,7 +376,7 @@ where
     /// placement (e.g., SGT balance on OP Stack).
     pub fn set_additional_balance_provider(
         &self,
-        f: std::sync::Arc<dyn Fn(alloy_primitives::Address) -> alloy_primitives::U256 + Send + Sync>,
+        f: std::sync::Arc<dyn Fn(alloy_primitives::Address) -> Result<alloy_primitives::U256, Box<dyn core::error::Error + Send + Sync>> + Send + Sync>,
     ) {
         self.inner().set_additional_balance_provider(f);
     }

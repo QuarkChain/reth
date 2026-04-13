@@ -138,7 +138,7 @@ impl<T: TransactionOrdering> TxPool<T> {
     /// Sets an additional balance provider for effective balance computation.
     pub(crate) fn set_additional_balance_provider(
         &mut self,
-        f: Arc<dyn Fn(Address) -> U256 + Send + Sync>,
+        f: Arc<dyn Fn(Address) -> Result<U256, Box<dyn core::error::Error + Send + Sync>> + Send + Sync>,
     ) {
         self.all_transactions.additional_balance_provider = Some(f);
     }
@@ -1380,7 +1380,7 @@ pub(crate) struct AllTransactions<T: PoolTransaction> {
     auths: FxHashMap<SenderId, HashSet<TxHash>>,
     /// Optional provider for additional balance beyond native (e.g., SGT).
     /// Given an address, returns the additional balance to add to the native balance.
-    additional_balance_provider: Option<Arc<dyn Fn(Address) -> U256 + Send + Sync>>,
+    additional_balance_provider: Option<Arc<dyn Fn(Address) -> Result<U256, Box<dyn core::error::Error + Send + Sync>> + Send + Sync>>,
     /// All Transactions metrics
     metrics: AllTransactionsMetrics,
 }
@@ -1500,7 +1500,13 @@ impl<T: PoolTransaction> AllTransactions<T> {
         let additional_balance = self.additional_balance_provider.clone();
         let effective_bal = |native: &U256, addr: Address| -> U256 {
             match &additional_balance {
-                Some(f) => native.saturating_add(f(addr)),
+                Some(f) => match f(addr) {
+                    Ok(additional) => native.saturating_add(additional),
+                    Err(err) => {
+                        warn!(target: "txpool", %err, %addr, "failed to read additional balance; using native-only");
+                        *native
+                    }
+                },
                 None => *native,
             }
         };
@@ -1980,7 +1986,13 @@ impl<T: PoolTransaction> AllTransactions<T> {
         let additional_balance = self.additional_balance_provider.clone();
         let effective_bal = |native: &U256, addr: Address| -> U256 {
             match &additional_balance {
-                Some(f) => native.saturating_add(f(addr)),
+                Some(f) => match f(addr) {
+                    Ok(additional) => native.saturating_add(additional),
+                    Err(err) => {
+                        warn!(target: "txpool", %err, %addr, "failed to read additional balance; using native-only");
+                        *native
+                    }
+                },
                 None => *native,
             }
         };
