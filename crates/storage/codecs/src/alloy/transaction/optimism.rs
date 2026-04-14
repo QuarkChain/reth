@@ -10,7 +10,8 @@ use crate::{
     Compact,
 };
 use alloy_consensus::{
-    constants::EIP7702_TX_TYPE_ID, Signed, TxEip1559, TxEip2930, TxEip7702, TxLegacy,
+    constants::{EIP4844_TX_TYPE_ID, EIP7702_TX_TYPE_ID},
+    Signed, TxEip1559, TxEip2930, TxEip4844, TxEip7702, TxLegacy,
 };
 use alloy_primitives::{Address, Bytes, Sealed, Signature, TxKind, B256, U256};
 use bytes::BufMut;
@@ -93,6 +94,10 @@ impl crate::Compact for OpTxType {
             Self::Legacy => COMPACT_IDENTIFIER_LEGACY,
             Self::Eip2930 => COMPACT_IDENTIFIER_EIP2930,
             Self::Eip1559 => COMPACT_IDENTIFIER_EIP1559,
+            Self::Eip4844 => {
+                buf.put_u8(EIP4844_TX_TYPE_ID);
+                COMPACT_EXTENDED_IDENTIFIER_FLAG
+            }
             Self::Eip7702 => {
                 buf.put_u8(EIP7702_TX_TYPE_ID);
                 COMPACT_EXTENDED_IDENTIFIER_FLAG
@@ -117,6 +122,7 @@ impl crate::Compact for OpTxType {
                 COMPACT_EXTENDED_IDENTIFIER_FLAG => {
                     let extended_identifier = buf.get_u8();
                     match extended_identifier {
+                        EIP4844_TX_TYPE_ID => Self::Eip4844,
                         EIP7702_TX_TYPE_ID => Self::Eip7702,
                         op_alloy_consensus::DEPOSIT_TX_TYPE_ID => Self::Deposit,
                         _ => panic!("Unsupported OpTxType identifier: {extended_identifier}"),
@@ -139,6 +145,7 @@ impl Compact for OpTypedTransaction {
             Self::Legacy(tx) => tx.to_compact(out),
             Self::Eip2930(tx) => tx.to_compact(out),
             Self::Eip1559(tx) => tx.to_compact(out),
+            Self::Eip4844(tx) => tx.to_compact(out),
             Self::Eip7702(tx) => tx.to_compact(out),
             Self::Deposit(tx) => tx.to_compact(out),
         };
@@ -160,6 +167,10 @@ impl Compact for OpTypedTransaction {
                 let (tx, buf) = Compact::from_compact(buf, buf.len());
                 (Self::Eip1559(tx), buf)
             }
+            OpTxType::Eip4844 => {
+                let (tx, buf) = Compact::from_compact(buf, buf.len());
+                (Self::Eip4844(tx), buf)
+            }
             OpTxType::Eip7702 => {
                 let (tx, buf) = Compact::from_compact(buf, buf.len());
                 (Self::Eip7702(tx), buf)
@@ -178,6 +189,7 @@ impl ToTxCompact for OpTxEnvelope {
             Self::Legacy(tx) => tx.tx().to_compact(buf),
             Self::Eip2930(tx) => tx.tx().to_compact(buf),
             Self::Eip1559(tx) => tx.tx().to_compact(buf),
+            Self::Eip4844(tx) => tx.tx().to_compact(buf),
             Self::Eip7702(tx) => tx.tx().to_compact(buf),
             Self::Deposit(tx) => tx.to_compact(buf),
         };
@@ -204,6 +216,11 @@ impl FromTxCompact for OpTxEnvelope {
                 let tx = Signed::new_unhashed(tx, signature);
                 (Self::Eip1559(tx), buf)
             }
+            OpTxType::Eip4844 => {
+                let (tx, buf) = TxEip4844::from_compact(buf, buf.len());
+                let tx = Signed::new_unhashed(tx, signature);
+                (Self::Eip4844(tx), buf)
+            }
             OpTxType::Eip7702 => {
                 let (tx, buf) = TxEip7702::from_compact(buf, buf.len());
                 let tx = Signed::new_unhashed(tx, signature);
@@ -226,6 +243,7 @@ impl Envelope for OpTxEnvelope {
             Self::Legacy(tx) => tx.signature(),
             Self::Eip2930(tx) => tx.signature(),
             Self::Eip1559(tx) => tx.signature(),
+            Self::Eip4844(tx) => tx.signature(),
             Self::Eip7702(tx) => tx.signature(),
             Self::Deposit(_) => &DEPOSIT_SIGNATURE,
         }

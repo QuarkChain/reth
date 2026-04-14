@@ -62,6 +62,7 @@ impl From<CompactOpReceipt<'_>> for OpReceipt {
             OpTxType::Legacy => Self::Legacy(inner),
             OpTxType::Eip2930 => Self::Eip2930(inner),
             OpTxType::Eip1559 => Self::Eip1559(inner),
+            OpTxType::Eip4844 => Self::Eip4844(inner),
             OpTxType::Eip7702 => Self::Eip7702(inner),
             OpTxType::Deposit => {
                 Self::Deposit(OpDepositReceipt { inner, deposit_nonce, deposit_receipt_version })
